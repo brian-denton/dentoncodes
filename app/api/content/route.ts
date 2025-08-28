@@ -139,6 +139,7 @@ async function callChat({ provider, baseUrl, model, temperature, system, user }:
           model,
           stream: false,
           think: false,
+          keepalive: '-1m',
           options: { temperature },
           messages: [
             { role: "system", content: system },
