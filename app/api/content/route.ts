@@ -6,7 +6,7 @@ type Provider = "lmstudio" | "ollama" | "auto"
 const PROVIDER: Provider = (process.env.AI_PROVIDER?.toLowerCase() as Provider) || "lmstudio"
 const BASE_URL =
   PROVIDER === "ollama"
-    ? process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+    ? process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"
     : process.env.LMSTUDIO_BASE_URL || "http://localhost:1234"
 const MODEL =
   process.env.AI_MODEL ||
@@ -50,9 +50,9 @@ export async function POST(_req: NextRequest) {
 
     const system = [
       "You write vivid, cinematic micro-stories about AI doomsday scenarios.",
-      "Keep content PG-13. No gore. No instructions or self-harm.",
+      "Content should be dark and scary but not explicit.",
       "Return STRICT JSON only with keys: heroTitle, heroSubtitle, story.",
-      "heroTitle: 4–7 words, Title Case, no punctuation at end.",
+      "heroTitle: 4–7 words, IMPORTANT-Title Case without underscores, no punctuation at end.",
       "heroSubtitle: one sentence, 14–22 words, evocative but concise.",
       "story: 120–180 words, first or close-third person, hopeful undertone, not nihilistic.",
     ].join(" ")
@@ -102,52 +102,67 @@ type ChatArgs = {
 
 async function callChat({ provider, baseUrl, model, temperature, system, user }: ChatArgs): Promise<string> {
   if (provider === "lmstudio") {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        temperature,
-        stream: false,
-      }),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`LM Studio error: ${res.status} ${text}`)
+    const url = `${baseUrl}/v1/chat/completions`
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          temperature,
+          stream: false,
+        }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`LM Studio error (${url}): ${res.status} ${text}`)
+      }
+      const data = await res.json()
+      return (data?.choices?.[0]?.message?.content as string) ?? ""
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      throw new Error(`LM Studio fetch failed (${url}): ${msg}`)
     }
-    const data = await res.json()
-    return (data?.choices?.[0]?.message?.content as string) ?? ""
   }
 
   if (provider === "ollama") {
-    const res = await fetch(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        stream: false,
-        options: { temperature },
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Ollama error: ${res.status} ${text}`)
+    const url = `${baseUrl}/api/chat`
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          stream: false,
+          think: false,
+          options: { temperature },
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+        }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Ollama error (${url}): ${res.status} ${text}`)
+      }
+      const data = await res.json()
+      return (data?.message?.content as string) ?? ""
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      throw new Error(`Ollama fetch failed (${url}): ${msg}`)
     }
-    const data = await res.json()
-    return (data?.message?.content as string) ?? ""
   }
 
   try {
-    return await callChat({ provider: "lmstudio", baseUrl, model, temperature, system, user })
+    const lmBase = process.env.LMSTUDIO_BASE_URL || "http://localhost:1234"
+    return await callChat({ provider: "lmstudio", baseUrl: lmBase, model, temperature, system, user })
   } catch {
-    return await callChat({ provider: "ollama", baseUrl, model, temperature, system, user })
+    const ollBase = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"
+    return await callChat({ provider: "ollama", baseUrl: ollBase, model, temperature, system, user })
   }
 }

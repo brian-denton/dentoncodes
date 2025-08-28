@@ -22,6 +22,9 @@ module.exports = {
       },
       env_production: {
         NODE_ENV: 'production',
+        OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
+        AI_PROVIDER: 'ollama',
+        OLLAMA_MODEL: 'gemma3:270m',
       },
       // process management
       instances: 1, // change to 'max' for multi-core
