@@ -3,14 +3,37 @@ import { checkRateLimit, rateLimitHeaders } from "@/lib/rate-limit"
 
 type Provider = "lmstudio" | "ollama" | "auto"
 
+function firstEnv(...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = process.env[key]?.trim()
+    if (value) return value
+  }
+}
+
+function normalizeBaseUrl(baseUrl: string, provider: Exclude<Provider, "auto">): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "")
+
+  if (provider === "lmstudio") {
+    return trimmed.replace(/\/v1$/i, "")
+  }
+
+  return trimmed
+}
+
 const PROVIDER: Provider = (process.env.AI_PROVIDER?.toLowerCase() as Provider) || "lmstudio"
 const BASE_URL =
   PROVIDER === "ollama"
-    ? process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"
-    : process.env.LMSTUDIO_BASE_URL || "http://localhost:1234"
+    ? normalizeBaseUrl(firstEnv("OLLAMA_BASE_URL") || "http://127.0.0.1:11434", "ollama")
+    : normalizeBaseUrl(
+        firstEnv("LMSTUDIO_BASE_URL", "LMSTUDIO_API_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE") ||
+          "http://localhost:1234",
+        "lmstudio",
+      )
 const MODEL =
-  process.env.AI_MODEL ||
-  (PROVIDER === "ollama" ? process.env.OLLAMA_MODEL : process.env.LMSTUDIO_MODEL) ||
+  firstEnv("AI_MODEL") ||
+  (PROVIDER === "ollama"
+    ? firstEnv("OLLAMA_MODEL")
+    : firstEnv("LMSTUDIO_MODEL", "LMSTUDIO_CHAT_MODEL", "OPENAI_MODEL")) ||
   "qwen2.5:3b-instruct"
 
 export const runtime = "nodejs"
@@ -160,10 +183,14 @@ async function callChat({ provider, baseUrl, model, temperature, system, user }:
   }
 
   try {
-    const lmBase = process.env.LMSTUDIO_BASE_URL || "http://localhost:1234"
+    const lmBase = normalizeBaseUrl(
+      firstEnv("LMSTUDIO_BASE_URL", "LMSTUDIO_API_BASE_URL", "OPENAI_BASE_URL", "OPENAI_API_BASE") ||
+        "http://localhost:1234",
+      "lmstudio",
+    )
     return await callChat({ provider: "lmstudio", baseUrl: lmBase, model, temperature, system, user })
   } catch {
-    const ollBase = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434"
+    const ollBase = normalizeBaseUrl(firstEnv("OLLAMA_BASE_URL") || "http://127.0.0.1:11434", "ollama")
     return await callChat({ provider: "ollama", baseUrl: ollBase, model, temperature, system, user })
   }
 }
